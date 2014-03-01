@@ -40,6 +40,8 @@ CHEROKEE_BEGIN_DECLS
 typedef enum {
 	service_id_spawn_request,
 	service_id_spawn_reply,
+	service_id_fd_open_request,
+	service_id_fd_open_reply,
 } cherokee_service_id_t;
 
 typedef enum {
@@ -51,6 +53,7 @@ typedef enum {
 	service_magic_pid = 0xF5,
 	service_magic_fdmap = 0xF6,
 	service_magic_chdir = 0xF7,
+	service_magic_enclosing_ownership = 0xF8,
 } cherokee_service_magic_t;
 
 typedef struct {
@@ -58,6 +61,8 @@ typedef struct {
 	int fd_out;
 	int fd_err;
 } cherokee_services_fdmap_t;
+
+#define CHEROKEE_SERVICES_FDMAP_INIT { -1, -1, -1 }
 
 ret_t cherokee_services_client_init (int fd);
 ret_t cherokee_services_client_free (void);
@@ -72,6 +77,10 @@ ret_t cherokee_services_client_spawn (cherokee_buffer_t         *binary,
 				      cherokee_logger_writer_t  *error_writer,
 				      pid_t                     *pid_ret,
 				      cherokee_services_fdmap_t *fd_map);
+
+ret_t cherokee_services_client_open_with_enclosing_owner (cherokee_buffer_t *filepath,
+							  int               *fd_ret,
+							  int               *errno_ret);
 
 ret_t cherokee_services_server_init (int *child_fd);
 ret_t cherokee_services_server_free (void);

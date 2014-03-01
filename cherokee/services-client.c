@@ -109,6 +109,11 @@ nothing:
 }
 
 
+#define ALIGN4(buf)                                    \
+	while (buf.len & 0x3) {                        \
+		cherokee_buffer_add_char (&buf, '\0'); \
+	}
+
 ret_t
 cherokee_services_client_spawn (cherokee_buffer_t         *binary,
                                 cherokee_buffer_t         *user,
@@ -129,12 +134,6 @@ cherokee_services_client_spawn (cherokee_buffer_t         *binary,
 	int                envs     = 0;
 	ret_t              ret;
 	cherokee_buffer_t  tmp      = CHEROKEE_BUF_INIT;
-
-#define ALIGN4(buf)                                    \
-	while (buf.len & 0x3) {                        \
-		cherokee_buffer_add_char (&buf, '\0'); \
-	}
-
 
 	/* Check it's initialized
 	 */
@@ -295,3 +294,86 @@ error:
 	return ret_error;
 }
 
+ret_t
+cherokee_services_client_open_with_enclosing_owner (cherokee_buffer_t *filepath,
+						    int               *fd_ret,
+						    int               *errno_ret)
+{
+	cherokee_buffer_t         tmp   = CHEROKEE_BUF_INIT;
+	int                       n, k;
+	cherokee_services_fdmap_t fdmap = CHEROKEE_SERVICES_FDMAP_INIT;
+	ret_t                     ret;
+	
+	/* Check it's initialized
+	 */
+	if (_fd == -1)
+	{
+		TRACE (ENTRIES, "Spawner is not active. Refusing to open: %s\n", filepath->buf);
+		return ret_deny;
+	}
+
+	/* Lock the monitor mutex
+	 */
+	k = CHEROKEE_MUTEX_TRY_LOCK (&client_mutex);
+	if (k) {
+		return ret_eagain;
+	}
+
+	cherokee_buffer_ensure_size (&tmp, SERVICES_MESSAGE_MAX_SIZE);
+	
+	/* We want to open a file descriptor */
+	n = (int)service_id_fd_open_request;
+	cherokee_buffer_add (&tmp, (char *)&n, sizeof(int));
+	/* Specifically with ownership matching the container */
+	n = (int)service_magic_enclosing_ownership;
+	cherokee_buffer_add (&tmp, (char *)&n, sizeof(int));
+	
+	/* Put the filepath in we want to open */
+	n = (int)filepath->len;
+	cherokee_buffer_add (&tmp, (char *)&n, sizeof(int));
+	cherokee_buffer_add_buffer (&tmp, filepath);
+	cherokee_buffer_add_char   (&tmp, '\0');
+	ALIGN4(tmp);
+	
+	/* Send it to the services server in the main cherokee process
+	 */
+	if (unlikely (tmp.len > SERVICES_MESSAGE_MAX_SIZE)) {
+		goto error;
+	}
+
+	ret = cherokee_services_send(_fd, &tmp, NULL);
+	cherokee_buffer_mrproper (&tmp);
+
+	if (ret != ret_ok) {
+		goto error;
+	}
+
+	cherokee_buffer_ensure_size (&tmp, SERVICES_MESSAGE_MAX_SIZE);
+
+	/* Wait for the PID
+	 */
+	ret = cherokee_services_receive(_fd, &tmp, &fdmap);
+
+	if (ret != ret_ok) {
+		goto error;
+	}
+	
+	/* We expect 2 values, the reply type and the errno */
+	if (tmp.len != (sizeof(int) * 2)) {
+		goto error;
+	}
+
+	if (*((int *)tmp.buf) != service_id_fd_open_reply)
+		goto error;
+
+	*errno_ret = *(((int *)tmp.buf)+1);
+	
+	*fd_ret = fdmap.fd_in;
+	
+	CHEROKEE_MUTEX_UNLOCK (&client_mutex);
+	return ret_ok;
+
+error:
+	CHEROKEE_MUTEX_UNLOCK (&client_mutex);
+	return ret_error;
+}

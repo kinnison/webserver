@@ -37,7 +37,7 @@ cherokee_services_send (int fd,
 {
 	struct msghdr   sendbuf;
 	struct iovec    iov[1];
-	int             ret, *fdptr;
+	int             ret, *fdptr, nfds = 0;
 	struct cmsghdr *control_msg;
 	char            control_data[CMSG_SPACE (sizeof(int) * 3)];
 
@@ -58,12 +58,29 @@ cherokee_services_send (int fd,
 		control_msg = CMSG_FIRSTHDR (&sendbuf);
 		control_msg->cmsg_level = SOL_SOCKET;
 		control_msg->cmsg_type  = SCM_RIGHTS;
-		control_msg->cmsg_len   = CMSG_LEN (sizeof(int) * 3);
 		fdptr = (int*) CMSG_DATA (control_msg);
-		*fdptr++ = fd_map->fd_in;
-		*fdptr++ = fd_map->fd_out;
-		*fdptr++ = fd_map->fd_err;
-		sendbuf.msg_controllen = control_msg->cmsg_len;
+		if (fd_map->fd_in != -1) {
+			*fdptr++ = fd_map->fd_in;
+			nfds++;
+		}
+		if (fd_map->fd_out != -1) {
+			*fdptr++ = fd_map->fd_out;
+			nfds++;
+		}
+		if (fd_map->fd_err != -1) {
+			*fdptr++ = fd_map->fd_err;
+			nfds++;
+		}
+		if (nfds > 0) {
+			control_msg->cmsg_len   = CMSG_LEN (sizeof(int) * nfds);
+			sendbuf.msg_controllen = control_msg->cmsg_len;
+		} else {
+			/* We had a map, but nothing in it means nothing to
+			 * send as control messages.
+			 */
+			sendbuf.msg_control = NULL;
+			sendbuf.msg_controllen = 0;
+		}
 	}
 
 send_again:
@@ -116,19 +133,22 @@ receive_again:
 		control_msg = CMSG_FIRSTHDR (&recvbuf);
 		nfds = (control_msg->cmsg_len - sizeof (*control_msg)) / sizeof(int);
 		fdptr = (int *) CMSG_DATA (control_msg);
-		if (nfds == 3 &&
-		    fd_map != NULL &&
-		    control_msg->cmsg_type == SCM_RIGHTS &&
+		if (control_msg->cmsg_type == SCM_RIGHTS &&
 		    control_msg->cmsg_level == SOL_SOCKET) {
-			/* We got 3 and have a map to put them in */
-			fd_map->fd_in = *fdptr++;
-			fd_map->fd_out = *fdptr++;
-			fd_map->fd_err = *fdptr++;
-		} else if (control_msg->cmsg_type == SCM_RIGHTS &&
-			   control_msg->cmsg_level == SOL_SOCKET) {
-			/* Close the passed FDs, we don't want them */
-			while (nfds--)
-				close (*fdptr++);
+			if (nfds <= 3 &&
+			    fd_map != NULL) {
+				/* We got fds, and a map to store them */
+				if (nfds--)
+					fd_map->fd_in = *fdptr++;
+				if (nfds--)
+					fd_map->fd_out = *fdptr++;
+				if (nfds--)
+					fd_map->fd_err = *fdptr++;
+			} else {
+				/* Close the passed FDs, we don't want them */
+				while (nfds--)
+					close (*fdptr++);
+			}
 		}
 	}
 

@@ -390,12 +390,94 @@ cleanup:
 		close (fd_map->fd_err);
 }
 
+int
+open_with_enclosing_ownership (char *filepath, int *fd_ret)
+{
+	int          fd;
+	char        *lastslash;
+	struct stat  sbuf;
+	
+	lastslash = strrchr(filepath, '/');
+	
+	if (lastslash == NULL)
+		return EINVAL;
+	
+	fd = cherokee_open (filepath, (O_APPEND | O_WRONLY | O_CREAT |
+				       O_LARGEFILE | O_NOFOLLOW), 0640);
+	if (fd == -1)
+		return errno;
+	
+	/* Attempt to get the ownership of the enclosing directory */
+	*lastslash = '\0';
+	if (cherokee_stat (filepath, &sbuf) < 0) {
+		int er_sav = errno;
+		cherokee_fd_close (fd);
+		*lastslash = '/';
+		cherokee_unlink (filepath);
+		return er_sav;
+	}
+	
+	*lastslash = '/';
+	
+	if (cherokee_chown (filepath, sbuf.st_uid, sbuf.st_gid) < 0) {
+		int er_sav = errno;
+		cherokee_fd_close (fd);
+		cherokee_unlink (filepath);
+		return er_sav;
+	}
+	
+	*fd_ret = fd;
+	return 0;
+}
+
+void
+do_open (cherokee_buffer_t *buf, cherokee_services_fdmap_t *fdmap)
+{
+	int *p      = (int*)buf->buf;
+	int fd      = -1;
+	int r_errno = 0;
+	int remain  = buf->len;
+	int flen;
+	/* Skip the first int, already checked it's service_id_fd_open_request
+	 * so we need to check the open type and ensure we can handle it.
+	 */
+	p++; remain -= sizeof (int);
+	switch (*p) {
+	case service_magic_enclosing_ownership:
+		/* Skip the magic and have a go at opening the file */
+		p++; remain -= sizeof (int);
+		flen = *p;
+		p++; remain -= sizeof (int);
+		if (remain >= flen) {
+			r_errno = open_with_enclosing_ownership ((char *)p, &fd);
+			break;
+		}
+		/* else, fall through */
+	default:
+		fd = -1;
+		r_errno = EINVAL;
+	}
+
+	/* Construct reply using receive buffer */
+	cherokee_buffer_mrproper (buf);
+	remain = (int)service_id_fd_open_reply;
+	cherokee_buffer_add (buf, (char *)&remain, sizeof (int));
+	cherokee_buffer_add (buf, (char *)&r_errno, sizeof (int));
+	fdmap->fd_in = fd;
+	
+	/* And send it back to the caller */
+	cherokee_services_send(_fd, buf, fdmap);
+
+	/* Finally if fd wasn't -1, close it */
+	if (fd != -1)
+		cherokee_fd_close(fd);
+}
 
 ret_t
 cherokee_services_server_serve_request (void)
 {
 	ret_t ret;
-	cherokee_services_fdmap_t fd_map = { -1, -1, -1 };
+	cherokee_services_fdmap_t fd_map = CHEROKEE_SERVICES_FDMAP_INIT;
 
 	ret = cherokee_buffer_ensure_size(&recvbuf, SERVICES_MESSAGE_MAX_SIZE);
 	if (ret != ret_ok)
@@ -408,6 +490,9 @@ cherokee_services_server_serve_request (void)
 	switch (*((int *)recvbuf.buf)) {
 	case service_id_spawn_request:
 		do_spawn (&recvbuf, &fd_map);
+		return ret_ok;
+	case service_id_fd_open_request:
+		do_open (&recvbuf, &fd_map);
 		return ret_ok;
 	}
 
