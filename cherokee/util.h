@@ -157,6 +157,7 @@ int   cherokee_open          (const char *path, int oflag, int mode);
 int   cherokee_unlink        (const char *path);
 int   cherokee_pipe          (int fildes[2]);
 int   cherokee_socketpair    (int fildes[2], cherokee_boolean_t stream);
+int   cherokee_chown         (const char *restrict path, uid_t uid, gid_t gid);
 
 ret_t cherokee_gethostbyname (cherokee_buffer_t *hostname, struct addrinfo **addr);
 

@@ -2642,6 +2642,16 @@ int cherokee_socketpair (int fildes[2], cherokee_boolean_t stream)
 	return re;
 }
 
+int cherokee_chown (const char *restrict path, uid_t uid, gid_t gid)
+{
+	int re;
+
+	do {
+		re = chown (path, uid, gid);
+	} while ((re < 0) && (errno == EINTR));
+
+	return re;
+}
 
 void
 cherokee_random_seed (void)
