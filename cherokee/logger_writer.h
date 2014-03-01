@@ -56,6 +56,7 @@ typedef struct {
 	cherokee_buffer_t              command;
 
 	cherokee_boolean_t             initialized;
+	cherokee_boolean_t             use_enclosing_ownership;
 
 	void                          *priv;
 } cherokee_logger_writer_t;

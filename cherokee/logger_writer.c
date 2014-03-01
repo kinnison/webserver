@@ -24,6 +24,7 @@
 
 #include "common-internal.h"
 #include "logger_writer.h"
+#include "services.h"
 #include "util.h"
 
 #include <unistd.h>
@@ -71,6 +72,7 @@ cherokee_logger_writer_new (cherokee_logger_writer_t **writer)
 
 	CHEROKEE_MUTEX_INIT (&PRIV(n)->mutex, NULL);
 	n->initialized = false;
+	n->use_enclosing_ownership = false;
 
 	*writer = n;
 	return ret_ok;
@@ -183,6 +185,12 @@ cherokee_logger_writer_configure (cherokee_logger_writer_t *writer, cherokee_con
 			return ret_error;
 		}
 		cherokee_buffer_add_buffer (&writer->filename, tmp);
+		ret = cherokee_config_node_read_bool (config, "enclosing_owner",
+						      &writer->use_enclosing_ownership);
+		if (ret != ret_ok) {
+			/* default to false */
+			writer->use_enclosing_ownership = false;
+		}
 		break;
 
 	case cherokee_logger_writer_pipe:
@@ -299,7 +307,18 @@ cherokee_logger_writer_open (cherokee_logger_writer_t *writer)
 		goto out;
 
 	case cherokee_logger_writer_file:
-		writer->fd = cherokee_open (writer->filename.buf, O_APPEND | O_WRONLY | O_CREAT | O_LARGEFILE | O_NOFOLLOW, 0640);
+		writer->fd = -1;
+		if (writer->use_enclosing_ownership) {
+			int errno_ret;
+			ret = cherokee_services_client_open_with_enclosing_owner(&writer->filename,
+										 &writer->fd,
+										 &errno_ret);
+			if (ret != ret_ok && ret != ret_deny) {
+				LOG_ERROR (CHEROKEE_ERROR_LOGGER_WRITER_APPEND, writer->filename.buf);
+			}
+		}
+		if (writer->fd == -1)
+			writer->fd = cherokee_open (writer->filename.buf, O_APPEND | O_WRONLY | O_CREAT | O_LARGEFILE | O_NOFOLLOW, 0640);
 		if (writer->fd == -1) {
 			LOG_ERROR (CHEROKEE_ERROR_LOGGER_WRITER_APPEND, writer->filename.buf);
 			ret = ret_error;
