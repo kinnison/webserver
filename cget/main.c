@@ -64,6 +64,8 @@
 
 #include "proxy.h"
 
+#include "services.h"
+
 #define EXIT_OK    0
 #define EXIT_ERROR 1
 #define POLL_TIME  1000
@@ -72,6 +74,17 @@
 #define COLUM_SEP  ":"
 #define ENTRIES    "cget"
 
+/* Stub of the FD open call for the logger writer */
+ret_t
+cherokee_services_client_open_with_enclosing_owner(cherokee_buffer_t *buf,
+						   int               *fd,
+						   int               *err_ret)
+{
+	*fd = -1;
+	*err_ret = EINVAL;
+	
+	return ret_deny;
+}
 
 /* Globals..
  */

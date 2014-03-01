@@ -498,3 +498,15 @@ cherokee_services_server_serve_request (void)
 
 	return ret_error;
 }
+
+/* Stub of the FD client call for the parent */
+ret_t
+cherokee_services_client_open_with_enclosing_owner(cherokee_buffer_t *buf,
+						   int               *fd,
+						   int               *ret_err)
+{
+	*fd = -1;
+	*ret_err = EINVAL;
+	
+	return ret_deny;
+}
