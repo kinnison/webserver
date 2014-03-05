@@ -390,16 +390,16 @@ main (int argc, char **argv)
 		exit (EXIT_OK_ONCE);
 	}
 
-	ret = common_server_initialization (srv);
-	if (ret < ret_ok) {
-		exit (EXIT_ERROR_FATAL);
-	}
-
 	if (services_fd != -1) {
 		ret = cherokee_services_client_init(services_fd);
 		if (unlikely(ret < ret_ok)) {
 			exit (EXIT_ERROR_FATAL);
 		}
+	}
+
+	ret = common_server_initialization (srv);
+	if (ret < ret_ok) {
+		exit (EXIT_ERROR_FATAL);
 	}
 
 
