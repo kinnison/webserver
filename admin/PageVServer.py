@@ -66,6 +66,7 @@ NOTE_ERRORS           = N_('Back-end used to store the log errors.')
 NOTE_ACCESSES_ERRORS  = N_('Back-end used to store the log accesses and errors.')
 NOTE_WRT_FILE         = N_('Full path to the file where the information will be saved.')
 NOTE_WRT_EXEC         = N_('Path to the executable that will be invoked on each log entry.')
+NOTE_WRT_OWNER        = N_('Cherokee should set the log file to have the same ownership as that of the directory containing it. (Default: False)')
 NOTE_X_REAL_IP        = N_('Whether the logger should read and use the X-Real-IP and X-Forwarded-For headers (send by reverse proxies).')
 NOTE_X_REAL_IP_ALL    = N_('Accept all the X-Real-IP and X-Forwarded-For headers. WARNING: Turn it on only if you are centain of what you are doing.')
 NOTE_X_REAL_IP_ACCESS = N_('List of IP addresses and subnets that are allowed to send X-Real-IP and X-Forwarded-For headers.')
@@ -538,6 +539,7 @@ class LogginWidgetContent (CTK.Container):
         writer = CTK.cfg.get_val ('%s!error_writer!type'%(pre))
         if writer == 'file':
             table.Add (_('Filename'), CTK.TextCfg('%s!error_writer!filename'%(pre)), _(NOTE_WRT_FILE))
+            table.Add (_('Use Directory Owner'), CTK.CheckCfg('%s!error_writer!enclosing_owner'%(pre), False), _(NOTE_WRT_OWNER))
         elif writer == 'exec':
             table.Add (_('Command'), CTK.TextCfg('%s!error_writer!command'%(pre)), _(NOTE_WRT_EXEC))
 
@@ -577,6 +579,10 @@ class LogginWidgetContent (CTK.Container):
 
                 submit += CTK.TextCfg('%s!access!filename'%(pre), False)
                 table.Add (_('Filename'), submit, _(NOTE_WRT_FILE))
+                submit = CTK.Submitter(url_apply)
+                submit += CTK.CheckCfg('%s!access!enclosing_owner'%(pre), False)
+                table.Add (_('Use Directory Owner'), submit, _(NOTE_WRT_OWNER))
+
             elif writer == 'exec':
                 submit += CTK.TextCfg('%s!access!command'%(pre))
                 table.Add (_('Command'), submit, _(NOTE_WRT_EXEC))
